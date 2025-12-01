@@ -237,6 +237,97 @@
         title: "底线终结",
         description: "白方先行。收尾一击（单步）。",
         difficulty: "简单"
+      },
+      {
+        id: "00008",
+        fen: "r6k/pp2r2p/4Rp1Q/3p4/8/1N1P2R1/PqP2bPP/7K b - - 0 24",
+        solution: [
+          { move: "f2g3", reply: "e6e7" },
+          { move: "b2b1", reply: "b3c1" },
+          { move: "b1c1", reply: "h6c1" }
+        ],
+        title: "Lichess 开源谜题 00008",
+        description: "主题：crushing, hangingPiece, long, middlegame；预期 3 手。",
+        difficulty: "中等"
+      },
+      {
+        id: "0000D",
+        fen: "5rk1/1p3ppp/pq3b2/8/8/1P1Q1N2/P4PPP/3R2K1 w - - 2 27",
+        solution: [
+          { move: "d3d6", reply: "f8d8" },
+          { move: "d6d8", reply: "f6d8" }
+        ],
+        title: "Lichess 开源谜题 0000D",
+        description: "主题：advantage, endgame, short；预期 2 手。",
+        difficulty: "中等"
+      },
+      {
+        id: "0008Q",
+        fen: "8/4R3/1p2P3/p4r2/P6p/1P3Pk1/4K3/8 w - - 1 64",
+        solution: [
+          { move: "e7f7", reply: "f5e5" },
+          { move: "e2f1", reply: "e5e6" }
+        ],
+        title: "Lichess 开源谜题 0008Q",
+        description: "主题：advantage, endgame, rookEndgame, short；预期 2 手。",
+        difficulty: "简单"
+      },
+      {
+        id: "0009B",
+        fen: "r2qr1k1/b1p2ppp/pp4n1/P1P1p3/4P1n1/B2P2Pb/3NBP1P/RN1QR1K1 b - - 1 16",
+        solution: [
+          { move: "b6c5", reply: "e2g4" },
+          { move: "h3g4", reply: "d1g4" }
+        ],
+        title: "Lichess 开源谜题 0009B",
+        description: "主题：advantage, middlegame, short；预期 2 手。",
+        difficulty: "简单"
+      },
+      {
+        id: "000Pw",
+        fen: "6k1/5p1p/4p3/4q3/3nN3/2Q3P1/PP3P1P/6K1 w - - 2 37",
+        solution: [
+          { move: "e4d2", reply: "d4e2" },
+          { move: "g1f1", reply: "e2c3" }
+        ],
+        title: "Lichess 开源谜题 000Pw",
+        description: "主题：crushing, endgame, fork, short；预期 2 手。",
+        difficulty: "中等"
+      },
+      {
+        id: "000VW",
+        fen: "r4r2/1p3pkp/p5p1/3R1N1Q/3P4/8/P1q2P2/3R2K1 b - - 3 25",
+        solution: [
+          { move: "g6f5", reply: "d5c5" },
+          { move: "c2e4", reply: "h5g5" },
+          { move: "g7h8", reply: "g5f6" }
+        ],
+        title: "Lichess 开源谜题 000VW",
+        description: "主题：crushing, endgame, long；预期 3 手。",
+        difficulty: "困难"
+      },
+      {
+        id: "000Vc",
+        fen: "8/8/4k1p1/2KpP2p/5PP1/8/8/8 w - - 0 53",
+        solution: [
+          { move: "g4h5", reply: "g6h5" },
+          { move: "f4f5", reply: "e6e5" },
+          { move: "f5f6", reply: "e5f6" }
+        ],
+        title: "Lichess 开源谜题 000Vc",
+        description: "主题：crushing, endgame, long, pawnEndgame；预期 3 手。",
+        difficulty: "中等"
+      },
+      {
+        id: "000Zo",
+        fen: "4r3/1k6/pp3r2/1b2P2p/3R1p2/P1R2P2/1P4PP/6K1 w - - 0 35",
+        solution: [
+          { move: "e5f6", reply: "e8e1" },
+          { move: "g1f2", reply: "e1f1" }
+        ],
+        title: "Lichess 开源谜题 000Zo",
+        description: "主题：endgame, mate, mateIn2, short；预期 2 手。",
+        difficulty: "简单"
       }
     ];
 
@@ -307,7 +398,7 @@
       );
     };
 
-    const ChessSquare = ({ square, squareName, color, isHighlight, isSelected, isLastMove, onSquareClick, onDrop }) => {
+    const ChessSquare = ({ square, squareName, color, isHighlight, isSelected, isLastMove, isHint, onSquareClick, onDrop }) => {
       const pieceSources = square ? getPieceImg(square.color === 'w' ? 'w' : 'b', square.type) : null;
       
       // Simple Drag & Drop
@@ -327,7 +418,7 @@
 
       return (
         <div
-          className={`square ${color} ${isHighlight ? 'highlight' : ''} ${isSelected ? 'selected' : ''} ${isLastMove ? 'last-move' : ''} w-full h-full flex items-center justify-center relative select-none`}
+          className={`square ${color} ${isHighlight ? 'highlight' : ''} ${isSelected ? 'selected' : ''} ${isLastMove ? 'last-move' : ''} ${isHint ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-transparent' : ''} w-full h-full flex items-center justify-center relative select-none`}
           onClick={onSquareClick}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
@@ -362,6 +453,9 @@
       const [status, setStatus] = useState("playing"); // playing, correct, wrong
       const [lastMoveSquares, setLastMoveSquares] = useState([]);
       const [step, setStep] = useState(0);
+      const [puzzleError, setPuzzleError] = useState(null);
+      const [hintSquares, setHintSquares] = useState([]);
+      const [hintText, setHintText] = useState(null);
 
       const currentPuzzle = PUZZLES[idx];
 
@@ -374,8 +468,32 @@
           setStep(0);
           setPossibleMoves([]);
           setSelectedSquare(null);
+          setHintSquares([]);
+          setHintText(null);
         }
       }, [idx, chessLib]);
+
+      // Validate puzzle scriptability to avoid无解的关卡
+      useEffect(() => {
+        if (!chessLib) return;
+        try {
+          const g = new chessLib(currentPuzzle.fen);
+          currentPuzzle.solution.forEach((stepObj, i) => {
+            const move = stepObj.move;
+            const mv = g.move({ from: move.slice(0,2), to: move.slice(2,4), promotion: 'q' });
+            if (!mv) throw new Error(`第 ${i+1} 手玩家走子非法: ${move}`);
+            if (stepObj.reply) {
+              const reply = stepObj.reply;
+              const rv = g.move({ from: reply.slice(0,2), to: reply.slice(2,4), promotion: 'q' });
+              if (!rv) throw new Error(`第 ${i+1} 手应招非法: ${reply}`);
+            }
+          });
+          setPuzzleError(null);
+        } catch (err) {
+          console.error(err);
+          setPuzzleError(err.message || "关卡脚本非法");
+        }
+      }, [currentPuzzle, chessLib]);
 
       const onDrop = (from, to) => {
         if (!game || status !== 'playing') return;
@@ -393,6 +511,8 @@
           const moveStr = from + to;
           if (moveStr !== neededMove) {
             setStatus("wrong");
+            setHintSquares([]);
+            setHintText(null);
             setTimeout(() => {
                 // Reset board on wrong move
                 const resetG = new chessLib(currentPuzzle.fen);
@@ -400,6 +520,8 @@
                 setStatus("playing");
                 setStep(0);
                 setLastMoveSquares([]);
+                setHintSquares([]);
+                setHintText(null);
             }, 800);
             return;
           }
@@ -408,6 +530,8 @@
           playMoveSound();
           setGame(gCopy);
           setLastMoveSquares([from, to]);
+          setHintSquares([]);
+          setHintText(null);
           
           // Check if puzzle ended or computer reply
           if (step + 1 >= steps.length && !currentStepObj.reply) {
@@ -451,6 +575,17 @@
           }
       };
 
+      const showHint = () => {
+          if (status !== 'playing') return;
+          const steps = currentPuzzle.solution;
+          const currentStepObj = steps[step];
+          if (!currentStepObj) return;
+          const from = currentStepObj.move.slice(0,2);
+          const to = currentStepObj.move.slice(2,4);
+          setHintSquares([from, to]);
+          setHintText(`提示：${from} → ${to}`);
+      };
+
       if (!game) return <div>Loading...</div>;
 
       const board = [];
@@ -468,6 +603,7 @@
                     isHighlight={possibleMoves.includes(sq)}
                     isSelected={selectedSquare === sq}
                     isLastMove={lastMoveSquares.includes(sq)}
+                    isHint={hintSquares.includes(sq)}
                     onSquareClick={() => onSquareClick(sq)}
                     onDrop={onDrop}
                   />
@@ -483,17 +619,60 @@
                {board}
             </div>
             <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 flex flex-col gap-6">
-                <div>
-                   <div className="flex justify-between items-center mb-2">
-                     <span className="bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full text-sm">Puzzle #{idx+1}</span>
+               <div>
+                   <div className="flex flex-col gap-2 mb-2">
+                     <div className="flex justify-between items-center gap-3 flex-wrap">
+                       <span className="bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full text-sm">Puzzle #{idx+1} · ID {currentPuzzle.id}</span>
+                       <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">难度：{currentPuzzle.difficulty}</span>
+                     </div>
+                     <div className="flex gap-2">
+                       <select
+                         className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                         value={currentPuzzle.id}
+                         onChange={(e) => {
+                           const targetIdx = PUZZLES.findIndex(p => String(p.id) === e.target.value);
+                           if (targetIdx >= 0) setIdx(targetIdx);
+                         }}
+                       >
+                         {PUZZLES.map((p, i) => (
+                           <option key={p.id} value={p.id}>
+                             #{i+1} · {p.title} · {p.difficulty}
+                           </option>
+                         ))}
+                       </select>
+                       <button
+                         onClick={() => {
+                           const next = (idx + 1) % PUZZLES.length;
+                           setIdx(next);
+                         }}
+                         className="px-3 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200"
+                       >
+                         随机/下一
+                       </button>
+                     </div>
                    </div>
                    <h2 className="text-2xl font-bold mb-2">{currentPuzzle.title}</h2>
                    <p className="text-gray-600">{currentPuzzle.description}</p>
+                   {puzzleError && (
+                     <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                       关卡校验失败：{puzzleError}
+                     </div>
+                   )}
                 </div>
                 <div className="flex-1 min-h-[100px] flex items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
                     {status === 'playing' && <div className="text-gray-400">请走出最佳的一步...</div>}
                     {status === 'correct' && <div className="text-green-600 font-bold text-xl">🎉 正确!</div>}
                     {status === 'wrong' && <div className="text-red-500 font-bold">❌ 走错了，重试中...</div>}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={showHint}
+                    disabled={status !== 'playing'}
+                    className={`flex-1 py-2 rounded-lg font-semibold ${status === 'playing' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                  >
+                    提示（显示最佳走法）
+                  </button>
+                  {hintText && <span className="text-sm text-yellow-800">{hintText}</span>}
                 </div>
                 <button 
                   onClick={() => idx < PUZZLES.length-1 ? setIdx(i=>i+1) : alert("All Done!")} 
