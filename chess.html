@@ -591,6 +591,42 @@
       const board = [];
       const files = ['a','b','c','d','e','f','g','h'];
       const ranks = ['8','7','6','5','4','3','2','1'];
+      const squareCenter = (sq) => {
+         const fileIdx = files.indexOf(sq[0]);
+         const rankIdx = ranks.indexOf(sq[1]);
+         return { x: (fileIdx + 0.5) * 12.5, y: (rankIdx + 0.5) * 12.5 };
+      };
+
+      const renderHintArrow = () => {
+        if (!hintSquares || hintSquares.length < 2) return null;
+        const from = hintSquares[0];
+        const to = hintSquares[1];
+        const a = squareCenter(from);
+        const b = squareCenter(to);
+        const dx = Math.abs(a.x - b.x);
+        const dy = Math.abs(a.y - b.y);
+        let pathD;
+        if ((dx === 12.5 && dy === 25) || (dx === 25 && dy === 12.5)) {
+           // Knight move: use two segments (L shape)
+           const mid = { x: a.x, y: b.y };
+           pathD = `M ${a.x} ${a.y} L ${mid.x} ${mid.y} L ${b.x} ${b.y}`;
+        } else {
+           // Straight/diagonal curve
+           const cx = (a.x + b.x) / 2;
+           const cy = (a.y + b.y) / 2;
+           pathD = `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`;
+        }
+        return (
+          <svg className="absolute inset-0 pointer-events-none" viewBox="0 0 100 100">
+            <defs>
+              <marker id="hint-arrow-head" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+                <path d="M0,0 L4,2 L0,4 z" fill="#f59e0b" />
+              </marker>
+            </defs>
+            <path d={pathD} fill="none" stroke="#f59e0b" strokeWidth="1.5" markerEnd="url(#hint-arrow-head)" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        );
+      };
       for(let r=0; r<8; r++) {
           for(let f=0; f<8; f++) {
               const sq = files[f]+ranks[r];
@@ -603,7 +639,7 @@
                     isHighlight={possibleMoves.includes(sq)}
                     isSelected={selectedSquare === sq}
                     isLastMove={lastMoveSquares.includes(sq)}
-                    isHint={hintSquares.includes(sq)}
+                    isHint={false}
                     onSquareClick={() => onSquareClick(sq)}
                     onDrop={onDrop}
                   />
@@ -615,8 +651,25 @@
         <div className="min-h-screen bg-gray-50 flex flex-col">
           <Header goHome={goBack} />
           <div className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 px-4 pb-12">
-            <div className="w-full max-w-[500px] aspect-square rounded-lg shadow-xl overflow-hidden border-4 border-gray-800 bg-gray-800 grid grid-cols-8 grid-rows-8">
-               {board}
+              <div className="relative">
+                <div className="w-full max-w-[500px] aspect-square rounded-lg shadow-xl overflow-hidden border-4 border-gray-800 bg-gray-800 grid grid-cols-8 grid-rows-8 relative">
+                   {board}
+                   {renderHintArrow()}
+                 
+                   {/* Game over overlay remains */}
+                </div>
+              {/* Files */}
+              <div className="absolute -bottom-6 inset-x-0 grid grid-cols-8 text-center text-xs sm:text-sm text-gray-700 font-semibold pointer-events-none">
+                {files.map(f => <span key={`file-${f}`}>{f}</span>)}
+              </div>
+              {/* Ranks */}
+              <div className="absolute inset-y-0 -left-6 grid grid-rows-8 text-xs sm:text-sm text-gray-700 font-semibold pointer-events-none">
+                {ranks.map(r => (
+                  <div key={`rank-${r}`} className="flex items-center justify-center">
+                    {r}
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 flex flex-col gap-6">
                <div>
@@ -699,6 +752,9 @@
       const [selectedSquare, setSelectedSquare] = useState(null);
       const [possibleMoves, setPossibleMoves] = useState([]);
       const [engineError, setEngineError] = useState(null);
+      const evalPerspectiveRef = useRef('w');
+      const [hintMove, setHintMove] = useState(null);
+      const [hintLoading, setHintLoading] = useState(false);
       
       const engineRef = useRef(null);
 
@@ -715,8 +771,7 @@
             (evalData) => {
                 // Normalize evaluation to White's perspective for display consistency
                 // Note: Stockfish usually sends eval relative to side to move.
-                // We'll just display what it sends for now but label it.
-                setEvalScore(evalData);
+                setEvalScore({ ...evalData, turn: evalPerspectiveRef.current });
             }
         );
         engineRef.current = client;
@@ -736,6 +791,11 @@
          
          setIsThinking(true);
          try {
+             // 记录当前评估视角（当前局面的行棋方）
+             const fenTurn = new chessLib(currentFen).turn();
+             evalPerspectiveRef.current = fenTurn;
+         } catch(e) {}
+         try {
              const bestMove = await engineRef.current.go({
                  fen: currentFen,
                  level: ENGINE_LEVELS[level]
@@ -753,6 +813,7 @@
                          playMoveSound();
                          setHistory(h => [...h, newG.fen()]);
                          setLastMoveSquares([from, to]);
+                         setHintMove(null);
                          return newG;
                      }
                      return prevGame;
@@ -781,6 +842,7 @@
               setLastMoveSquares([from, to]);
               setSelectedSquare(null);
               setPossibleMoves([]);
+              setHintMove(null);
               
               // Trigger AI
               // FIX: Replaced newG.isGameOver() with newG.game_over()
@@ -815,6 +877,7 @@
           setGame(new chessLib(oldFen));
           setHistory(newHistory);
           setLastMoveSquares([]);
+          setHintMove(null);
           engineRef.current.stop();
           setIsThinking(false);
       };
@@ -826,6 +889,7 @@
           setLastMoveSquares([]);
           setEvalScore(null);
           setIsThinking(false);
+          setHintMove(null);
           engineRef.current.stop();
       };
 
@@ -847,6 +911,7 @@
                     isHighlight={possibleMoves.includes(sq)}
                     isSelected={selectedSquare === sq}
                     isLastMove={lastMoveSquares.includes(sq)}
+                    isHint={false}
                     onSquareClick={() => onSquareClick(sq)}
                     onDrop={onDrop}
                   />
@@ -854,27 +919,120 @@
           }
       }
 
+      const squareCenter = (sq) => {
+         const fileIdx = files.indexOf(sq[0]);
+         const rankIdx = ranks.indexOf(sq[1]);
+         return { x: (fileIdx + 0.5) * 12.5, y: (rankIdx + 0.5) * 12.5 };
+      };
+
+      const renderHintArrow = () => {
+        if (!hintMove) return null;
+        const from = hintMove.from;
+        const to = hintMove.to;
+        const a = squareCenter(from);
+        const b = squareCenter(to);
+        const dx = Math.abs(a.x - b.x);
+        const dy = Math.abs(a.y - b.y);
+        let pathD;
+        if ((dx === 12.5 && dy === 25) || (dx === 25 && dy === 12.5)) {
+           const mid = { x: a.x, y: b.y };
+           pathD = `M ${a.x} ${a.y} L ${mid.x} ${mid.y} L ${b.x} ${b.y}`;
+        } else {
+           const cx = (a.x + b.x) / 2;
+           const cy = (a.y + b.y) / 2;
+           pathD = `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`;
+        }
+        return (
+          <svg className="absolute inset-0 pointer-events-none" viewBox="0 0 100 100">
+            <defs>
+              <marker id="hint-arrow-head-ai" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+                <path d="M0,0 L4,2 L0,4 z" fill="#f59e0b" />
+              </marker>
+            </defs>
+            <path d={pathD} fill="none" stroke="#f59e0b" strokeWidth="1.5" markerEnd="url(#hint-arrow-head-ai)" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        );
+      };
+
+      const getEvalSummary = () => {
+        if (!game || !evalScore) return { whitePercent: 0.5, label: '均势' };
+        const perspective = evalScore.turn || 'w';
+        let score = evalScore.type === 'mate'
+          ? (evalScore.value > 0 ? 1000 : -1000)
+          : evalScore.value;
+        // Stockfish 报告通常以走棋方视角，换算成白方视角
+        if (perspective === 'b') score = -score;
+        if (evalScore.type === 'mate') {
+          return {
+            whitePercent: score > 0 ? 1 : 0,
+            label: score > 0 ? '白方必胜' : '黑方必胜'
+          };
+        }
+        const clamped = Math.max(-600, Math.min(600, score)); // 限制在 ±6 分
+        const whitePercent = (clamped + 600) / 1200;
+        const label = `${score >= 0 ? '+' : ''}${(score/100).toFixed(2)}`;
+        return { whitePercent, label };
+      };
+
+      const evalSummary = getEvalSummary();
+
       return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
           <Header goHome={goBack} />
           <div className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 px-4 pb-12">
-            
-            {/* Board */}
-            <div className="w-full max-w-[550px] aspect-square rounded-lg shadow-2xl overflow-hidden border-4 border-gray-800 bg-gray-800 grid grid-cols-8 grid-rows-8 relative">
-                {board}
-                
-                {/* FIX: Replaced isGameOver() with game_over() and isCheckmate() with in_checkmate() */}
-                {game.game_over() && (
-                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm">
-                        <div className="bg-white p-6 rounded-xl text-center shadow-2xl">
-                            <h2 className="text-2xl font-bold mb-2">游戏结束</h2>
-                            <p className="text-gray-600 mb-4">
-                                {game.in_checkmate() ? (game.turn() === 'w' ? "你输了" : "你赢了！") : "和棋"}
-                            </p>
-                            <button onClick={resetGame} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold">再来一局</button>
+            <div className="flex items-center gap-4 w-full max-w-[600px]">
+              <div className="hidden sm:flex flex-col items-center">
+                <div className="relative h-[420px] w-7 rounded-full overflow-hidden border-2 border-gray-300 bg-gray-200 shadow-inner">
+                  <div
+                    className="absolute left-0 right-0 bg-black"
+                    style={{ height: `${(1 - evalSummary.whitePercent) * 100}%`, top: 0 }}
+                  ></div>
+                  <div
+                    className="absolute left-0 right-0 bg-white"
+                    style={{ height: `${evalSummary.whitePercent * 100}%`, bottom: 0 }}
+                  ></div>
+                  <div
+                    className="absolute left-0 right-0 flex justify-center"
+                    style={{ bottom: `${evalSummary.whitePercent * 100}%` }}
+                  >
+                    <div className="w-3 h-1 bg-blue-500 rounded"></div>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500 mt-2 font-mono text-center leading-tight w-20">{evalSummary.label}</div>
+              </div>
+
+              {/* Board */}
+              <div className="relative">
+                <div className="w-full max-w-[520px] aspect-square rounded-lg shadow-2xl overflow-hidden border-4 border-gray-800 bg-gray-800 grid grid-cols-8 grid-rows-8 relative">
+                    {board}
+                    {hintMove && renderHintArrow()}
+                    
+                    {/* FIX: Replaced isGameOver() with game_over() and isCheckmate() with in_checkmate() */}
+                    {game.game_over() && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm">
+                            <div className="bg-white p-6 rounded-xl text-center shadow-2xl">
+                                <h2 className="text-2xl font-bold mb-2">游戏结束</h2>
+                                <p className="text-gray-600 mb-4">
+                                    {game.in_checkmate() ? (game.turn() === 'w' ? "你输了" : "你赢了！") : "和棋"}
+                                </p>
+                                <button onClick={resetGame} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold">再来一局</button>
+                            </div>
                         </div>
+                    )}
+                </div>
+                {/* Files */}
+                <div className="absolute -bottom-6 inset-x-0 grid grid-cols-8 text-center text-xs sm:text-sm text-gray-700 font-semibold pointer-events-none">
+                  {files.map(f => <span key={`file-ai-${f}`}>{f}</span>)}
+                </div>
+                {/* Ranks */}
+                <div className="absolute inset-y-0 -left-6 grid grid-rows-8 text-xs sm:text-sm text-gray-700 font-semibold pointer-events-none">
+                  {ranks.map(r => (
+                    <div key={`rank-ai-${r}`} className="flex items-center justify-center">
+                      {r}
                     </div>
-                )}
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Controls */}
@@ -920,8 +1078,13 @@
                             {game.turn() === 'w' ? <span>轮到你走棋 (执白)</span> : <span>等待电脑...</span>}
                             {evalScore && (
                                 <span className="text-xs font-mono mt-2 bg-gray-200 px-2 py-1 rounded">
-                                    Eval: {evalScore.type === 'mate' ? `M${evalScore.value}` : (evalScore.value / 100).toFixed(2)}
+                                    Eval: {evalSummary.label}
                                 </span>
+                            )}
+                            {hintMove && (
+                              <span className="text-xs font-mono mt-1 bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                                提示：{hintMove.from}→{hintMove.to}
+                              </span>
                             )}
                         </div>
                     )}
@@ -933,6 +1096,31 @@
                     </button>
                     <button onClick={resetGame} className="py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-200 transition-colors">
                         新游戏
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!engineReady || !engineRef.current || !game || isThinking || game.turn() !== 'w') return;
+                        setHintLoading(true);
+                        setHintMove(null);
+                        try {
+                          const fen = game.fen();
+                          evalPerspectiveRef.current = game.turn();
+                          const best = await engineRef.current.search({ fen, depth: 12 });
+                          if (best && best !== '(none)') {
+                            const from = best.substring(0,2);
+                            const to = best.substring(2,4);
+                            setHintMove({ from, to, text: `${from}→${to}` });
+                          }
+                        } catch (e) {
+                          console.error("hint error", e);
+                        } finally {
+                          setHintLoading(false);
+                        }
+                      }}
+                      disabled={!engineReady || !game || isThinking || game.turn() !== 'w' || hintLoading}
+                      className="py-3 col-span-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded-xl font-bold transition-colors disabled:opacity-50"
+                    >
+                      {hintLoading ? '计算提示...' : '提示最佳走法'}
                     </button>
                 </div>
             </div>
