@@ -391,7 +391,7 @@
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <GameCard title="残局挑战 (Puzzles)" icon="ph-strategy" color="green" tag="经典" onClick={() => onSelectGame('puzzles')} />
               <GameCard title="对战电脑 (Play vs AI)" icon="ph-robot" color="teal" tag="已修复" onClick={() => onSelectGame('computer')} />
-              <GameCard title="骑士巡游 (Coming Soon)" icon="ph-horse" color="orange" onClick={() => alert('开发中...')} />
+              <GameCard title="不公平对战 (Unfair)" icon="ph-sword" color="red" tag="Hard" onClick={() => onSelectGame('unfair')} />
             </div>
           </div>
         </div>
@@ -445,7 +445,7 @@
     };
 
     // --- Puzzle Game Component ---
-    const PuzzleGame = ({ goBack, chessLib }) => {
+    const PuzzleGame = ({ goBack, chessLib, onImportToComputer }) => {
       const [game, setGame] = useState(null);
       const [idx, setIdx] = useState(0);
       const [selectedSquare, setSelectedSquare] = useState(null);
@@ -717,23 +717,31 @@
                     {status === 'correct' && <div className="text-green-600 font-bold text-xl">🎉 正确!</div>}
                     {status === 'wrong' && <div className="text-red-500 font-bold">❌ 走错了，重试中...</div>}
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={showHint}
-                    disabled={status !== 'playing'}
-                    className={`flex-1 py-2 rounded-lg font-semibold ${status === 'playing' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={showHint}
+                      disabled={status !== 'playing'}
+                      className={`flex-1 py-2 rounded-lg font-semibold ${status === 'playing' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                    >
+                      提示（显示最佳走法）
+                    </button>
+                    {hintText && <span className="text-sm text-yellow-800">{hintText}</span>}
+                  </div>
+                  <button 
+                    onClick={() => idx < PUZZLES.length-1 ? setIdx(i=>i+1) : alert("All Done!")} 
+                    disabled={status !== 'correct'}
+                    className={`w-full py-3 rounded-xl font-bold ${status==='correct' ? 'bg-green-500 text-white shadow-lg shadow-green-200 hover:bg-green-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                   >
-                    提示（显示最佳走法）
+                    下一关
                   </button>
-                  {hintText && <span className="text-sm text-yellow-800">{hintText}</span>}
+                  <button 
+                    onClick={() => onImportToComputer && onImportToComputer(currentPuzzle.fen)}
+                    className="w-full py-3 rounded-xl font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                  >
+                    导入当前局面到人机分析
+                  </button>
                 </div>
-                <button 
-                  onClick={() => idx < PUZZLES.length-1 ? setIdx(i=>i+1) : alert("All Done!")} 
-                  disabled={status !== 'correct'}
-                  className={`w-full py-3 rounded-xl font-bold ${status==='correct' ? 'bg-green-500 text-white shadow-lg shadow-green-200 hover:bg-green-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                >
-                  下一关
-                </button>
             </div>
           </div>
         </div>
@@ -741,7 +749,7 @@
     };
 
     // --- Computer Game Component ---
-    const ComputerGame = ({ goBack, chessLib }) => {
+    const ComputerGame = ({ goBack, chessLib, initialFen, onFenConsumed }) => {
       const [game, setGame] = useState(null);
       const [level, setLevel] = useState("800");
       const [engineReady, setEngineReady] = useState(false);
@@ -755,13 +763,14 @@
       const evalPerspectiveRef = useRef('w');
       const [hintMove, setHintMove] = useState(null);
       const [hintLoading, setHintLoading] = useState(false);
+      const importedFenPlayedRef = useRef(false);
       
       const engineRef = useRef(null);
 
       // Init Engine
       useEffect(() => {
         if (!chessLib) return;
-        const g = new chessLib();
+        const g = new chessLib(initialFen || undefined);
         setGame(g);
         setHistory([g.fen()]);
 
@@ -784,6 +793,45 @@
           client.terminate();
         };
       }, [chessLib]);
+
+      // If imported FEN provided, switch到最强档
+      useEffect(() => {
+        if (initialFen) {
+          setLevel("2500");
+          importedFenPlayedRef.current = false;
+        }
+      }, [initialFen]);
+
+      // Apply imported FEN after init
+      useEffect(() => {
+        if (!chessLib || !initialFen) return;
+        try {
+          const g = new chessLib(initialFen);
+          setGame(g);
+          setHistory([g.fen()]);
+          setLastMoveSquares([]);
+          setEvalScore(null);
+          setIsThinking(false);
+          setHintMove(null);
+          setSelectedSquare(null);
+          setPossibleMoves([]);
+          engineRef.current?.stop();
+          onFenConsumed && onFenConsumed();
+          importedFenPlayedRef.current = false;
+        } catch (e) {
+          console.error("Failed to load imported FEN", e);
+        }
+      }, [initialFen, chessLib, onFenConsumed]);
+
+      // If imported FEN starts with黑方走，自动让引擎先走
+      useEffect(() => {
+        if (!engineReady || !game || !initialFen) return;
+        if (importedFenPlayedRef.current) return;
+        if (game.turn() === 'b') {
+          importedFenPlayedRef.current = true;
+          makeAiMove(game.fen());
+        }
+      }, [engineReady, game, initialFen, makeAiMove]);
 
       // AI Logic
       const makeAiMove = useCallback(async (currentFen) => {
@@ -870,9 +918,10 @@
       };
 
       const handleUndo = () => {
-          if (isThinking || history.length < 3) return; // Start(1) + Player(2) + AI(3)
-          // Revert 2 steps
-          const newHistory = history.slice(0, history.length - 2);
+          if (isThinking || history.length < 2) return; // need at least a previous state
+          const stepsToRevert = history.length >= 3 ? 2 : 1; // if双方已走，撤回一整回合，否则撤回上一手
+          const newHistory = history.slice(0, history.length - stepsToRevert);
+          if (newHistory.length === 0) return;
           const oldFen = newHistory[newHistory.length - 1];
           setGame(new chessLib(oldFen));
           setHistory(newHistory);
@@ -1105,7 +1154,423 @@
                         try {
                           const fen = game.fen();
                           evalPerspectiveRef.current = game.turn();
-                          const best = await engineRef.current.search({ fen, depth: 12 });
+                          const best = await engineRef.current.go({ fen, level: ENGINE_LEVELS["2500"], movetimeOverride: 2500 });
+                          if (best && best !== '(none)') {
+                            const from = best.substring(0,2);
+                            const to = best.substring(2,4);
+                            setHintMove({ from, to, text: `${from}→${to}` });
+                          }
+                        } catch (e) {
+                          console.error("hint error", e);
+                        } finally {
+                          setHintLoading(false);
+                        }
+                      }}
+                      disabled={!engineReady || !game || isThinking || game.turn() !== 'w' || hintLoading}
+                      className="py-3 col-span-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded-xl font-bold transition-colors disabled:opacity-50"
+                    >
+                      {hintLoading ? '计算提示...' : '提示最佳走法'}
+                    </button>
+                </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- Unfair Game Component ---
+    const UnfairGame = ({ goBack, chessLib, losses, onRecordLoss }) => {
+      const [game, setGame] = useState(null);
+      const [engineReady, setEngineReady] = useState(false);
+      const [isThinking, setIsThinking] = useState(false);
+      const [evalScore, setEvalScore] = useState(null);
+      const [history, setHistory] = useState([]);
+      const [lastMoveSquares, setLastMoveSquares] = useState([]);
+      const [selectedSquare, setSelectedSquare] = useState(null);
+      const [possibleMoves, setPossibleMoves] = useState([]);
+      const [engineError, setEngineError] = useState(null);
+      const evalPerspectiveRef = useRef('w');
+      const [hintMove, setHintMove] = useState(null);
+      const [hintLoading, setHintLoading] = useState(false);
+
+      const engineRef = useRef(null);
+
+      const computeHandicapFen = useCallback((lossCount) => {
+        const g = new chessLib();
+        const targets = ['b1','g1','c1','f1','a1','h1']; // knights, bishops, rooks
+        let remaining = lossCount;
+        for (const sq of targets) {
+          if (remaining <= 0) break;
+          const p = g.get(sq);
+          if (p && p.color === 'w' && ['r','n','b'].includes(p.type)) {
+            g.remove(sq);
+            g.put({ type: 'q', color: 'w' }, sq);
+            remaining -= 1;
+          }
+        }
+        return g.fen();
+      }, [chessLib]);
+
+      // Init
+      useEffect(() => {
+        if (!chessLib) return;
+        const startFen = computeHandicapFen(losses);
+        const g = new chessLib(startFen);
+        setGame(g);
+        setHistory([g.fen()]);
+
+        const client = createEngineClient(
+            (err) => setEngineError(err),
+            (log) => {},
+            (evalData) => {
+                setEvalScore({ ...evalData, turn: evalPerspectiveRef.current });
+            }
+        );
+        engineRef.current = client;
+
+        client.init()
+          .then(() => setEngineReady(true))
+          .catch(err => setEngineError("无法连接 Stockfish CDN"));
+
+        return () => {
+          client.terminate();
+        };
+      }, [chessLib, computeHandicapFen, losses]);
+
+      // Rebuild board on new losses
+      useEffect(() => {
+        if (!chessLib || !engineReady) return;
+        const startFen = computeHandicapFen(losses);
+        const g = new chessLib(startFen);
+        setGame(g);
+        setHistory([g.fen()]);
+        setLastMoveSquares([]);
+        setEvalScore(null);
+        setIsThinking(false);
+        setHintMove(null);
+        setSelectedSquare(null);
+        setPossibleMoves([]);
+        engineRef.current?.stop();
+      }, [losses, chessLib, computeHandicapFen, engineReady]);
+
+      const makeAiMove = useCallback(async (currentFen) => {
+         if (!engineRef.current || !engineReady) return;
+         
+         setIsThinking(true);
+         try {
+             const fenTurn = new chessLib(currentFen).turn();
+             evalPerspectiveRef.current = fenTurn;
+         } catch(e) {}
+         try {
+             const bestMove = await engineRef.current.go({
+                 fen: currentFen,
+                 level: ENGINE_LEVELS["2500"],
+                 movetimeOverride: 2500
+             });
+             
+             if (bestMove && bestMove !== '(none)') {
+                 const from = bestMove.substring(0,2);
+                 const to = bestMove.substring(2,4);
+                 const promotion = bestMove.length > 4 ? bestMove.substring(4) : 'q';
+                 
+                 setGame(prevGame => {
+                     const newG = new chessLib(prevGame.fen());
+                     const move = newG.move({ from, to, promotion });
+                     if (move) {
+                         playMoveSound();
+                         setHistory(h => [...h, newG.fen()]);
+                         setLastMoveSquares([from, to]);
+                         setHintMove(null);
+                         return newG;
+                     }
+                     return prevGame;
+                 });
+             }
+         } catch(e) {
+             console.error("AI Move Error", e);
+         } finally {
+             setIsThinking(false);
+         }
+      }, [engineReady, chessLib]);
+
+      // If black to move initially, auto-move
+      useEffect(() => {
+        if (!engineReady || !game) return;
+        if (game.turn() === 'b' && !isThinking) {
+          makeAiMove(game.fen());
+        }
+      }, [engineReady, game, isThinking, makeAiMove]);
+
+      const onDrop = (from, to) => {
+          if (!game || isThinking || game.turn() !== 'w' || game.game_over()) return;
+          
+          const newG = new chessLib(game.fen());
+          try {
+              const move = newG.move({ from, to, promotion: 'q' });
+              if (!move) return;
+              
+              playMoveSound();
+              setGame(newG);
+              setHistory(h => [...h, newG.fen()]);
+              setLastMoveSquares([from, to]);
+              setSelectedSquare(null);
+              setPossibleMoves([]);
+              setHintMove(null);
+              
+              if (!newG.game_over()) {
+                  setTimeout(() => makeAiMove(newG.fen()), 200);
+              }
+          } catch(e) {}
+      };
+
+      const onSquareClick = (sq) => {
+          if (!game || isThinking || game.turn() !== 'w') return;
+          
+          if (selectedSquare === sq) { setSelectedSquare(null); setPossibleMoves([]); return; }
+          if (possibleMoves.includes(sq)) { onDrop(selectedSquare, sq); return; }
+          
+          const p = game.get(sq);
+          if (p && p.color === 'w') {
+              setSelectedSquare(sq);
+              const moves = game.moves({ square: sq, verbose: true });
+              setPossibleMoves(moves.map(m => m.to));
+          } else {
+              setSelectedSquare(null); setPossibleMoves([]);
+          }
+      };
+
+      const handleUndo = () => {
+          if (isThinking || history.length < 2) return;
+          const stepsToRevert = history.length >= 3 ? 2 : 1;
+          const newHistory = history.slice(0, history.length - stepsToRevert);
+          if (newHistory.length === 0) return;
+          const oldFen = newHistory[newHistory.length - 1];
+          setGame(new chessLib(oldFen));
+          setHistory(newHistory);
+          setLastMoveSquares([]);
+          setHintMove(null);
+          engineRef.current.stop();
+          setIsThinking(false);
+      };
+
+      const resetGame = () => {
+          const startFen = computeHandicapFen(losses);
+          const g = new chessLib(startFen);
+          setGame(g);
+          setHistory([g.fen()]);
+          setLastMoveSquares([]);
+          setEvalScore(null);
+          setIsThinking(false);
+          setHintMove(null);
+          engineRef.current.stop();
+      };
+
+      // Detect loss (checkmate vs white or surrender)
+      useEffect(() => {
+        if (!game) return;
+        if (game.game_over() && game.in_checkmate() && game.turn() === 'w') {
+          onRecordLoss && onRecordLoss();
+        }
+      }, [game, onRecordLoss]);
+
+      if (!game) return <div className="h-screen flex items-center justify-center">Loading Engine...</div>;
+
+      // Board Render
+      const board = [];
+      const files = ['a','b','c','d','e','f','g','h'];
+      const ranks = ['8','7','6','5','4','3','2','1'];
+      for(let r=0; r<8; r++) {
+          for(let f=0; f<8; f++) {
+              const sq = files[f]+ranks[r];
+              board.push(
+                  <ChessSquare 
+                    key={sq} 
+                    squareName={sq} 
+                    square={game.get(sq)} 
+                    color={(r+f)%2===1 ? 'black' : 'white'}
+                    isHighlight={possibleMoves.includes(sq)}
+                    isSelected={selectedSquare === sq}
+                    isLastMove={lastMoveSquares.includes(sq)}
+                    isHint={false}
+                    onSquareClick={() => onSquareClick(sq)}
+                    onDrop={onDrop}
+                  />
+              );
+          }
+      }
+
+      const squareCenter = (sq) => {
+         const fileIdx = files.indexOf(sq[0]);
+         const rankIdx = ranks.indexOf(sq[1]);
+         return { x: (fileIdx + 0.5) * 12.5, y: (rankIdx + 0.5) * 12.5 };
+      };
+
+      const renderHintArrow = () => {
+        if (!hintMove) return null;
+        const from = hintMove.from;
+        const to = hintMove.to;
+        const a = squareCenter(from);
+        const b = squareCenter(to);
+        const dx = Math.abs(a.x - b.x);
+        const dy = Math.abs(a.y - b.y);
+        let pathD;
+        if ((dx === 12.5 && dy === 25) || (dx === 25 && dy === 12.5)) {
+           const mid = { x: a.x, y: b.y };
+           pathD = `M ${a.x} ${a.y} L ${mid.x} ${mid.y} L ${b.x} ${b.y}`;
+        } else {
+           const cx = (a.x + b.x) / 2;
+           const cy = (a.y + b.y) / 2;
+           pathD = `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`;
+        }
+        return (
+          <svg className="absolute inset-0 pointer-events-none" viewBox="0 0 100 100">
+            <defs>
+              <marker id="hint-arrow-head-unfair" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+                <path d="M0,0 L4,2 L0,4 z" fill="#f59e0b" />
+              </marker>
+            </defs>
+            <path d={pathD} fill="none" stroke="#f59e0b" strokeWidth="1.5" markerEnd="url(#hint-arrow-head-unfair)" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        );
+      };
+
+      const getEvalSummary = () => {
+        if (!game || !evalScore) return { whitePercent: 0.5, label: '均势' };
+        const perspective = evalScore.turn || 'w';
+        let score = evalScore.type === 'mate'
+          ? (evalScore.value > 0 ? 1000 : -1000)
+          : evalScore.value;
+        if (perspective === 'b') score = -score;
+        if (evalScore.type === 'mate') {
+          return {
+            whitePercent: score > 0 ? 1 : 0,
+            label: score > 0 ? '白方必胜' : '黑方必胜'
+          };
+        }
+        const clamped = Math.max(-600, Math.min(600, score));
+        const whitePercent = (clamped + 600) / 1200;
+        const label = `${score >= 0 ? '+' : ''}${(score/100).toFixed(2)}`;
+        return { whitePercent, label };
+      };
+
+      const evalSummary = getEvalSummary();
+
+      return (
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+          <Header goHome={goBack} />
+          <div className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 px-4 pb-12">
+            
+            <div className="flex items-center gap-4 w-full max-w-[600px]">
+              <div className="hidden sm:flex flex-col items-center">
+                <div className="relative h-[420px] w-7 rounded-full overflow-hidden border-2 border-gray-300 bg-gray-200 shadow-inner">
+                  <div
+                    className="absolute left-0 right-0 bg-black"
+                    style={{ height: `${(1 - evalSummary.whitePercent) * 100}%`, top: 0 }}
+                  ></div>
+                  <div
+                    className="absolute left-0 right-0 bg-white"
+                    style={{ height: `${evalSummary.whitePercent * 100}%`, bottom: 0 }}
+                  ></div>
+                  <div
+                    className="absolute left-0 right-0 flex justify-center"
+                    style={{ bottom: `${evalSummary.whitePercent * 100}%` }}
+                  >
+                    <div className="w-3 h-1 bg-blue-500 rounded"></div>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500 mt-2 font-mono text-center leading-tight w-20">{evalSummary.label}</div>
+              </div>
+
+              <div className="relative">
+                <div className="w-full max-w-[520px] aspect-square rounded-lg shadow-2xl overflow-hidden border-4 border-gray-800 bg-gray-800 grid grid-cols-8 grid-rows-8 relative">
+                    {board}
+                    {hintMove && renderHintArrow()}
+                    
+                    {game.game_over() && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm">
+                            <div className="bg-white p-6 rounded-xl text-center shadow-2xl">
+                                <h2 className="text-2xl font-bold mb-2">游戏结束</h2>
+                                <p className="text-gray-600 mb-4">
+                                    {game.in_checkmate() ? (game.turn() === 'w' ? "你输了" : "你赢了！") : "和棋"}
+                                </p>
+                                <button onClick={resetGame} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold">再来一局</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <div className="absolute -bottom-6 inset-x-0 grid grid-cols-8 text-center text-xs sm:text-sm text-gray-700 font-semibold pointer-events-none">
+                  {files.map(f => <span key={`file-unfair-${f}`}>{f}</span>)}
+                </div>
+                <div className="absolute inset-y-0 -left-6 grid grid-rows-8 text-xs sm:text-sm text-gray-700 font-semibold pointer-events-none">
+                  {ranks.map(r => (
+                    <div key={`rank-unfair-${r}`} className="flex items-center justify-center">
+                      {r}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 flex flex-col gap-6">
+                <div className="flex justify-between items-center">
+                    <span className="flex items-center gap-2 font-bold text-gray-700">
+                        <i className="ph ph-sword text-xl"></i> 不公平对战
+                    </span>
+                    <span className="text-xs font-bold px-2 py-1 rounded uppercase tracking-wider bg-red-100 text-red-700">
+                        最强引擎
+                    </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-sm text-gray-600">
+                  <span className="px-2 py-1 bg-gray-100 rounded-lg">失败次数：{losses}</span>
+                  <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-lg">当前额外后：{Math.min(losses,6)}</span>
+                </div>
+
+                {engineError && (
+                    <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+                        Error: {engineError}. 请检查网络连接。
+                    </div>
+                )}
+
+                <div className="flex-1 min-h-[120px] flex items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 relative overflow-hidden">
+                    {isThinking ? (
+                        <div className="flex flex-col items-center gap-2 text-blue-600">
+                             <i className="ph ph-spinner animate-spin text-3xl"></i>
+                             <span className="font-bold text-sm">思考中...</span>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center gap-1 text-gray-400">
+                            {game.turn() === 'w' ? <span>你的回合 (执白)</span> : <span>等待电脑...</span>}
+                            {evalScore && (
+                                <span className="text-xs font-mono mt-2 bg-gray-200 px-2 py-1 rounded">
+                                    Eval: {evalSummary.label}
+                                </span>
+                            )}
+                            {hintMove && (
+                              <span className="text-xs font-mono mt-1 bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                                提示：{hintMove.from}→{hintMove.to}
+                              </span>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <button onClick={handleUndo} disabled={isThinking || history.length < 2} className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors disabled:opacity-50">
+                        悔棋
+                    </button>
+                    <button onClick={() => { onRecordLoss && onRecordLoss(); resetGame(); }} className="py-3 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl font-bold transition-colors">
+                        投降（记入失败）
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!engineReady || !engineRef.current || !game || isThinking || game.turn() !== 'w') return;
+                        setHintLoading(true);
+                        setHintMove(null);
+                        try {
+                          const fen = game.fen();
+                          evalPerspectiveRef.current = game.turn();
+                          const best = await engineRef.current.go({ fen, level: ENGINE_LEVELS["2500"], movetimeOverride: 2500 });
                           if (best && best !== '(none)') {
                             const from = best.substring(0,2);
                             const to = best.substring(2,4);
@@ -1132,6 +1597,8 @@
     const App = () => {
       const [currentPage, setCurrentPage] = useState('hub');
       const [chessLib, setChessLib] = useState(() => window.Chess || null);
+      const [importFen, setImportFen] = useState(null);
+      const [unfairLosses, setUnfairLosses] = useState(0);
 
       useEffect(() => {
           if (!chessLib && window.Chess) {
@@ -1158,8 +1625,29 @@
         <div className="font-sans text-gray-900 bg-[#fdfdfd] min-h-screen">
           <style>{styles}</style>
           {currentPage === 'hub' && <Hub onSelectGame={setCurrentPage} />}
-          {currentPage === 'puzzles' && <PuzzleGame goBack={() => setCurrentPage('hub')} chessLib={chessLib} />}
-          {currentPage === 'computer' && <ComputerGame goBack={() => setCurrentPage('hub')} chessLib={chessLib} />}
+          {currentPage === 'puzzles' && (
+            <PuzzleGame
+              goBack={() => setCurrentPage('hub')}
+              chessLib={chessLib}
+              onImportToComputer={(fen) => { setImportFen(fen); setCurrentPage('computer'); }}
+            />
+          )}
+          {currentPage === 'computer' && (
+            <ComputerGame
+              goBack={() => setCurrentPage('hub')}
+              chessLib={chessLib}
+              initialFen={importFen}
+              onFenConsumed={() => setImportFen(null)}
+            />
+          )}
+          {currentPage === 'unfair' && (
+            <UnfairGame
+              goBack={() => setCurrentPage('hub')}
+              chessLib={chessLib}
+              losses={unfairLosses}
+              onRecordLoss={() => setUnfairLosses(l => l + 1)}
+            />
+          )}
         </div>
       );
     };
