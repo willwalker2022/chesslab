@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Fun Labs - Stockfish Integrated</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <!-- 注意：这里使用的是 0.10.3 版本，它的 API 是 game_over() 而不是 isGameOver() -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { margin: 0; font-family: 'Nunito', sans-serif; }
+    #root { min-height: 100vh; }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; }
+    ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+  </style>
+</head>
+<body class="bg-[#fdfdfd]">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // --- Piece assets (Lichess Alpha set) ---
+    const getPieceImg = (color, type) => {
+      // Direct CDN link for reliability in single-file mode
+      const cdnPath = `https://lichess1.org/assets/piece/alpha/${color}${type.toUpperCase()}.svg`;
+      return { cdnPath };
+    };
+
+    // --- Sound Logic ---
+    const playMoveSound = () => {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15);
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.15);
+      } catch (e) {
+        // Silent fail
+      }
+    };
+
+    // --- Engine (Stockfish) Logic FIXED ---
+    const ENGINE_LEVELS = {
+      "800": { skill: 0, movetime: 200 },    // Beginner
+      "1200": { skill: 5, movetime: 500 },   // Novice
+      "1600": { skill: 10, movetime: 800 },  // Intermediate
+      "2000": { skill: 15, movetime: 1200 }, // Advanced
+      "2500": { skill: 20, movetime: 2000 }  // Grandmaster
+    };
+
+    // Robust Engine Client using Blob URL
+    const createEngineClient = (onError, onLog, onEval) => {
+      let worker = null;
+      let resolver = null; // Promise resolver for 'bestmove'
+      let isThinking = false;
+
+      // Initialize the worker from CDN via Blob to bypass CORS restrictions
+      const init = async () => {
+        try {
+          const response = await fetch('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.0/stockfish.js');
+          if (!response.ok) throw new Error(`Stockfish load failed: ${response.status}`);
+          const scriptContent = await response.text();
+          const blob = new Blob([scriptContent], { type: 'application/javascript' });
+          const objectURL = URL.createObjectURL(blob);
+          
+          worker = new Worker(objectURL);
+
+          worker.onmessage = (event) => {
+            const line = typeof event.data === 'string' ? event.data : '';
+            if (onLog && line) onLog(line);
+
+            // Parse Evaluation
+            if (line.startsWith('info') && onEval && (line.includes('score cp') || line.includes('score mate'))) {
+              let score = 0;
+              let type = 'cp';
+              
+              if (line.includes('score mate')) {
+                type = 'mate';
+                const match = line.match(/score mate (-?\d+)/);
+                if (match) score = parseInt(match[1]);
+              } else if (line.includes('score cp')) {
+                const match = line.match(/score cp (-?\d+)/);
+                if (match) score = parseInt(match[1]);
+              }
+              // Note: Stockfish reports score from engine's perspective
+              onEval({ type, value: score });
+            }
+
+            // Parse Best Move
+            if (line.startsWith('bestmove')) {
+              const parts = line.split(' ');
+              const bestMove = parts[1];
+              isThinking = false;
+              if (resolver) {
+                resolver(bestMove);
+                resolver = null;
+              }
+            }
+          };
+
+          worker.onerror = (err) => {
+            console.error("Worker Error:", err);
+            if (onError) onError(err.message || "Engine Worker Error");
+          };
+
+          worker.postMessage('uci');
+          worker.postMessage('isready');
+          console.log("Engine: Initialized via Blob");
+        } catch (err) {
+          console.error("Engine Init Failed:", err);
+          if (onError) onError(err.message);
+          throw err;
+        }
+      };
+
+      // Execute a move search
+      const go = ({ fen, level, movetimeOverride }) => {
+        return new Promise((resolve) => {
+          if (!worker) {
+            resolve(null);
+            return;
+          }
+          
+          // Clear any previous resolver to prevent hanging promises
+          if (resolver) resolver(null);
+          resolver = resolve;
+          isThinking = true;
+
+          // Configure
+          const skill = level ? level.skill : 10;
+          const time = movetimeOverride || (level ? level.movetime : 1000);
+
+          worker.postMessage('stop'); // Stop any previous
+          worker.postMessage('ucinewgame');
+          worker.postMessage(`setoption name Skill Level value ${skill}`);
+          worker.postMessage(`position fen ${fen}`);
+          worker.postMessage(`go movetime ${time}`);
+        });
+      };
+
+      // Quick search for hints/eval
+      const search = ({ fen, depth, time }) => {
+        return new Promise((resolve) => {
+           if (!worker) { resolve(null); return; }
+           
+           if (resolver) resolver(null); // Cancel main search if checking hint? 
+           // Ideally hints use a separate instance or we manage queue, but for simple app, we override.
+           resolver = resolve;
+           
+           worker.postMessage(`position fen ${fen}`);
+           if (time) {
+             worker.postMessage(`go movetime ${time}`);
+           } else {
+             worker.postMessage(`go depth ${depth || 10}`);
+           }
+        });
+      };
+
+      const stop = () => {
+        if (worker) worker.postMessage('stop');
+      };
+
+      const terminate = () => {
+        if (worker) worker.terminate();
+        worker = null;
+      };
+
+      return { init, go, search, stop, terminate };
+    };
+
+    // --- Puzzles Data ---
+    const PUZZLES = [
+      {
+        id: 1,
+        fen: "8/8/3k4/8/3K2R1/7P/8/8 w - - 0 1",
+        solution: [
+            { move: "g4g6", reply: "d6e7" },
+            { move: "d4e5" }
+        ],
+        title: "卢塞纳桥法",
+        description: "白方先行。车退身垫桥护兵（预设黑王 Ke7）。",
+        difficulty: "中等"
+      },
+      {
+        id: 2,
+        fen: "4r1k1/pp3ppp/2n2q2/2b1p3/4P3/2N2N2/PPP2PPP/2KR1B1R w - - 0 1",
+        solution: [
+            { move: "c3d5", reply: "f6d8" },
+            { move: "f1b5" }
+        ],
+        title: "骑士先手",
+        description: "白方先行。跳马先手逼退皇后，再出车压制。",
+        difficulty: "中等"
+      },
+      {
+        id: 3,
+        fen: "6k1/5ppp/8/8/8/8/5PPP/4Q1K1 w - - 0 1",
+        solution: [{ move: "e1e8" }],
+        title: "底线终结",
+        description: "白方先行。收尾一击（单步）。",
+        difficulty: "简单"
+      }
+    ];
+
+    // --- Components ---
+
+    const Header = ({ goHome }) => (
+      <div className="w-full flex items-center justify-between p-6 max-w-6xl mx-auto select-none">
+        <div className="flex items-center gap-3 cursor-pointer group" onClick={goHome}>
+          <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center text-xl font-bold font-quirky group-hover:scale-110 transition-transform">
+            C
+          </div>
+          <h1 className="text-2xl font-bold font-quirky text-gray-800 tracking-tight">
+            Chess Fun <span className="text-gray-400">Labs</span>
+          </h1>
+        </div>
+        <div className="flex gap-4">
+          <button className="text-sm font-semibold text-gray-500 hover:text-black transition-colors">v1.2 Integrated</button>
+        </div>
+      </div>
+    );
+
+    const GameCard = ({ title, icon, color, onClick, tag }) => (
+      <div
+        onClick={onClick}
+        className={`game-card relative overflow-hidden bg-white rounded-2xl border-2 border-gray-100 p-6 h-48 flex flex-col justify-between cursor-pointer group hover:border-${color}-400`}
+      >
+        <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full bg-${color}-100 opacity-50 group-hover:scale-150 transition-transform duration-500`}></div>
+        <div className="z-10 flex justify-between items-start">
+          <div className={`p-3 rounded-xl bg-${color}-50 text-${color}-600 text-3xl`}>
+            <i className={`ph ${icon}`}></i>
+          </div>
+          {tag && (
+            <span className="px-2 py-1 bg-black text-white text-xs font-bold rounded uppercase tracking-wider">
+              {tag}
+            </span>
+          )}
+        </div>
+        <div className="z-10">
+          <h3 className="font-quirky text-xl font-bold text-gray-800 mb-1">{title}</h3>
+          <p className="text-sm text-gray-500 font-medium">开始挑战 &rarr;</p>
+        </div>
+      </div>
+    );
+
+    const Hub = ({ onSelectGame }) => {
+      return (
+        <div className="min-h-screen pb-20">
+          <Header goHome={() => {}} />
+          <div className="max-w-6xl mx-auto px-6 mt-10">
+            <div className="text-center mb-16">
+              <h2 className="text-5xl font-extrabold font-quirky text-gray-900 mb-6 leading-tight">
+                这里的国际象棋 <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-700">
+                  有点不一样
+                </span>
+              </h2>
+              <p className="text-xl text-gray-500 max-w-2xl mx-auto">
+                Stockfish 引擎现已集成。畅享丝滑的人机对战与残局挑战。
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <GameCard title="残局挑战 (Puzzles)" icon="ph-strategy" color="green" tag="经典" onClick={() => onSelectGame('puzzles')} />
+              <GameCard title="对战电脑 (Play vs AI)" icon="ph-robot" color="teal" tag="已修复" onClick={() => onSelectGame('computer')} />
+              <GameCard title="骑士巡游 (Coming Soon)" icon="ph-horse" color="orange" onClick={() => alert('开发中...')} />
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const ChessSquare = ({ square, squareName, color, isHighlight, isSelected, isLastMove, onSquareClick, onDrop }) => {
+      const pieceSources = square ? getPieceImg(square.color === 'w' ? 'w' : 'b', square.type) : null;
+      
+      // Simple Drag & Drop
+      const handleDragStart = (e) => {
+        if (!square) return;
+        e.dataTransfer.setData("text/plain", squareName);
+        e.dataTransfer.effectAllowed = "move";
+      };
+      const handleDragOver = (e) => { e.preventDefault(); };
+      const handleDrop = (e) => {
+        e.preventDefault();
+        const fromSquare = e.dataTransfer.getData("text/plain");
+        if (fromSquare && fromSquare !== squareName) {
+          onDrop(fromSquare, squareName);
+        }
+      };
+
+      return (
+        <div
+          className={`square ${color} ${isHighlight ? 'highlight' : ''} ${isSelected ? 'selected' : ''} ${isLastMove ? 'last-move' : ''} w-full h-full flex items-center justify-center relative select-none`}
+          onClick={onSquareClick}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {pieceSources && (
+            <div
+              className="chess-piece w-4/5 h-4/5 z-10 flex items-center justify-center"
+              draggable={true}
+              onDragStart={handleDragStart}
+            >
+              <img
+                src={pieceSources.cdnPath}
+                alt={`${square.color}${square.type}`}
+                className="w-full h-full object-contain drop-shadow-sm pointer-events-none"
+                style={{ filter: square.color === 'w' ? 'drop-shadow(0 2px 3px rgba(0,0,0,0.2))' : 'drop-shadow(0 2px 3px rgba(0,0,0,0.4))' }}
+              />
+            </div>
+          )}
+          {isHighlight && !pieceSources && (
+            <div className="w-3 h-3 bg-black opacity-20 rounded-full pointer-events-none"></div>
+          )}
+        </div>
+      );
+    };
+
+    // --- Puzzle Game Component ---
+    const PuzzleGame = ({ goBack, chessLib }) => {
+      const [game, setGame] = useState(null);
+      const [idx, setIdx] = useState(0);
+      const [selectedSquare, setSelectedSquare] = useState(null);
+      const [possibleMoves, setPossibleMoves] = useState([]);
+      const [status, setStatus] = useState("playing"); // playing, correct, wrong
+      const [lastMoveSquares, setLastMoveSquares] = useState([]);
+      const [step, setStep] = useState(0);
+
+      const currentPuzzle = PUZZLES[idx];
+
+      useEffect(() => {
+        if (chessLib) {
+          const g = new chessLib(currentPuzzle.fen);
+          setGame(g);
+          setStatus("playing");
+          setLastMoveSquares([]);
+          setStep(0);
+          setPossibleMoves([]);
+          setSelectedSquare(null);
+        }
+      }, [idx, chessLib]);
+
+      const onDrop = (from, to) => {
+        if (!game || status !== 'playing') return;
+        
+        // Validation
+        const steps = currentPuzzle.solution;
+        const currentStepObj = steps[step];
+        const neededMove = currentStepObj.move; // e.g., "g4g6"
+
+        const gCopy = new chessLib(game.fen());
+        try {
+          const moveResult = gCopy.move({ from, to, promotion: 'q' });
+          if (!moveResult) return;
+
+          const moveStr = from + to;
+          if (moveStr !== neededMove) {
+            setStatus("wrong");
+            setTimeout(() => {
+                // Reset board on wrong move
+                const resetG = new chessLib(currentPuzzle.fen);
+                setGame(resetG);
+                setStatus("playing");
+                setStep(0);
+                setLastMoveSquares([]);
+            }, 800);
+            return;
+          }
+
+          // Correct Move
+          playMoveSound();
+          setGame(gCopy);
+          setLastMoveSquares([from, to]);
+          
+          // Check if puzzle ended or computer reply
+          if (step + 1 >= steps.length && !currentStepObj.reply) {
+             setStatus("correct");
+          } else {
+             // Handle reply or next step
+             if (currentStepObj.reply) {
+                setTimeout(() => {
+                   const replyFrom = currentStepObj.reply.slice(0,2);
+                   const replyTo = currentStepObj.reply.slice(2,4);
+                   gCopy.move({ from: replyFrom, to: replyTo });
+                   setGame(new chessLib(gCopy.fen()));
+                   setLastMoveSquares([replyFrom, replyTo]);
+                   playMoveSound();
+                   
+                   if (step + 1 >= steps.length) {
+                       setStatus("correct");
+                   } else {
+                       setStep(s => s + 1);
+                   }
+                }, 400);
+             } else {
+                setStep(s => s + 1);
+             }
+          }
+        } catch(e) { console.error(e); }
+      };
+
+      const onSquareClick = (sq) => {
+          if (!game || status !== 'playing') return;
+          if (selectedSquare === sq) { setSelectedSquare(null); setPossibleMoves([]); return; }
+          if (possibleMoves.includes(sq)) { onDrop(selectedSquare, sq); setSelectedSquare(null); setPossibleMoves([]); return; }
+          
+          const p = game.get(sq);
+          if (p && p.color === game.turn()) {
+              setSelectedSquare(sq);
+              const moves = game.moves({ square: sq, verbose: true });
+              setPossibleMoves(moves.map(m => m.to));
+          } else {
+              setSelectedSquare(null); setPossibleMoves([]);
+          }
+      };
+
+      if (!game) return <div>Loading...</div>;
+
+      const board = [];
+      const files = ['a','b','c','d','e','f','g','h'];
+      const ranks = ['8','7','6','5','4','3','2','1'];
+      for(let r=0; r<8; r++) {
+          for(let f=0; f<8; f++) {
+              const sq = files[f]+ranks[r];
+              board.push(
+                  <ChessSquare 
+                    key={sq} 
+                    squareName={sq} 
+                    square={game.get(sq)} 
+                    color={(r+f)%2===1 ? 'black' : 'white'}
+                    isHighlight={possibleMoves.includes(sq)}
+                    isSelected={selectedSquare === sq}
+                    isLastMove={lastMoveSquares.includes(sq)}
+                    onSquareClick={() => onSquareClick(sq)}
+                    onDrop={onDrop}
+                  />
+              );
+          }
+      }
+
+      return (
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+          <Header goHome={goBack} />
+          <div className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 px-4 pb-12">
+            <div className="w-full max-w-[500px] aspect-square rounded-lg shadow-xl overflow-hidden border-4 border-gray-800 bg-gray-800 grid grid-cols-8 grid-rows-8">
+               {board}
+            </div>
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 flex flex-col gap-6">
+                <div>
+                   <div className="flex justify-between items-center mb-2">
+                     <span className="bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full text-sm">Puzzle #{idx+1}</span>
+                   </div>
+                   <h2 className="text-2xl font-bold mb-2">{currentPuzzle.title}</h2>
+                   <p className="text-gray-600">{currentPuzzle.description}</p>
+                </div>
+                <div className="flex-1 min-h-[100px] flex items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                    {status === 'playing' && <div className="text-gray-400">请走出最佳的一步...</div>}
+                    {status === 'correct' && <div className="text-green-600 font-bold text-xl">🎉 正确!</div>}
+                    {status === 'wrong' && <div className="text-red-500 font-bold">❌ 走错了，重试中...</div>}
+                </div>
+                <button 
+                  onClick={() => idx < PUZZLES.length-1 ? setIdx(i=>i+1) : alert("All Done!")} 
+                  disabled={status !== 'correct'}
+                  className={`w-full py-3 rounded-xl font-bold ${status==='correct' ? 'bg-green-500 text-white shadow-lg shadow-green-200 hover:bg-green-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                >
+                  下一关
+                </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- Computer Game Component ---
+    const ComputerGame = ({ goBack, chessLib }) => {
+      const [game, setGame] = useState(null);
+      const [level, setLevel] = useState("800");
+      const [engineReady, setEngineReady] = useState(false);
+      const [isThinking, setIsThinking] = useState(false);
+      const [evalScore, setEvalScore] = useState(null);
+      const [history, setHistory] = useState([]); // For undo
+      const [lastMoveSquares, setLastMoveSquares] = useState([]);
+      const [selectedSquare, setSelectedSquare] = useState(null);
+      const [possibleMoves, setPossibleMoves] = useState([]);
+      const [engineError, setEngineError] = useState(null);
+      
+      const engineRef = useRef(null);
+
+      // Init Engine
+      useEffect(() => {
+        if (!chessLib) return;
+        const g = new chessLib();
+        setGame(g);
+        setHistory([g.fen()]);
+
+        const client = createEngineClient(
+            (err) => setEngineError(err),
+            (log) => {}, // console.log(log), // Optional debug
+            (evalData) => {
+                // Normalize evaluation to White's perspective for display consistency
+                // Note: Stockfish usually sends eval relative to side to move.
+                // We'll just display what it sends for now but label it.
+                setEvalScore(evalData);
+            }
+        );
+        engineRef.current = client;
+
+        client.init()
+          .then(() => setEngineReady(true))
+          .catch(err => setEngineError("无法连接 Stockfish CDN"));
+
+        return () => {
+          client.terminate();
+        };
+      }, [chessLib]);
+
+      // AI Logic
+      const makeAiMove = useCallback(async (currentFen) => {
+         if (!engineRef.current || !engineReady) return;
+         
+         setIsThinking(true);
+         try {
+             const bestMove = await engineRef.current.go({
+                 fen: currentFen,
+                 level: ENGINE_LEVELS[level]
+             });
+             
+             if (bestMove && bestMove !== '(none)') {
+                 const from = bestMove.substring(0,2);
+                 const to = bestMove.substring(2,4);
+                 const promotion = bestMove.length > 4 ? bestMove.substring(4) : 'q';
+                 
+                 setGame(prevGame => {
+                     const newG = new chessLib(prevGame.fen());
+                     const move = newG.move({ from, to, promotion });
+                     if (move) {
+                         playMoveSound();
+                         setHistory(h => [...h, newG.fen()]);
+                         setLastMoveSquares([from, to]);
+                         return newG;
+                     }
+                     return prevGame;
+                 });
+             }
+         } catch(e) {
+             console.error("AI Move Error", e);
+         } finally {
+             setIsThinking(false);
+         }
+      }, [engineReady, level, chessLib]);
+
+      // Handle Player Move
+      const onDrop = (from, to) => {
+          // FIX: Replaced game.isGameOver() with game.game_over() for chess.js 0.10.x compatibility
+          if (!game || isThinking || game.turn() !== 'w' || game.game_over()) return;
+          
+          const newG = new chessLib(game.fen());
+          try {
+              const move = newG.move({ from, to, promotion: 'q' });
+              if (!move) return; // illegal
+              
+              playMoveSound();
+              setGame(newG);
+              setHistory(h => [...h, newG.fen()]);
+              setLastMoveSquares([from, to]);
+              setSelectedSquare(null);
+              setPossibleMoves([]);
+              
+              // Trigger AI
+              // FIX: Replaced newG.isGameOver() with newG.game_over()
+              if (!newG.game_over()) {
+                  // Small delay for realism
+                  setTimeout(() => makeAiMove(newG.fen()), 200);
+              }
+          } catch(e) {}
+      };
+
+      const onSquareClick = (sq) => {
+          if (!game || isThinking || game.turn() !== 'w') return;
+          
+          if (selectedSquare === sq) { setSelectedSquare(null); setPossibleMoves([]); return; }
+          if (possibleMoves.includes(sq)) { onDrop(selectedSquare, sq); return; }
+          
+          const p = game.get(sq);
+          if (p && p.color === 'w') {
+              setSelectedSquare(sq);
+              const moves = game.moves({ square: sq, verbose: true });
+              setPossibleMoves(moves.map(m => m.to));
+          } else {
+              setSelectedSquare(null); setPossibleMoves([]);
+          }
+      };
+
+      const handleUndo = () => {
+          if (isThinking || history.length < 3) return; // Start(1) + Player(2) + AI(3)
+          // Revert 2 steps
+          const newHistory = history.slice(0, history.length - 2);
+          const oldFen = newHistory[newHistory.length - 1];
+          setGame(new chessLib(oldFen));
+          setHistory(newHistory);
+          setLastMoveSquares([]);
+          engineRef.current.stop();
+          setIsThinking(false);
+      };
+
+      const resetGame = () => {
+          const g = new chessLib();
+          setGame(g);
+          setHistory([g.fen()]);
+          setLastMoveSquares([]);
+          setEvalScore(null);
+          setIsThinking(false);
+          engineRef.current.stop();
+      };
+
+      if (!game) return <div className="h-screen flex items-center justify-center">Loading Engine...</div>;
+
+      // Board Render
+      const board = [];
+      const files = ['a','b','c','d','e','f','g','h'];
+      const ranks = ['8','7','6','5','4','3','2','1'];
+      for(let r=0; r<8; r++) {
+          for(let f=0; f<8; f++) {
+              const sq = files[f]+ranks[r];
+              board.push(
+                  <ChessSquare 
+                    key={sq} 
+                    squareName={sq} 
+                    square={game.get(sq)} 
+                    color={(r+f)%2===1 ? 'black' : 'white'}
+                    isHighlight={possibleMoves.includes(sq)}
+                    isSelected={selectedSquare === sq}
+                    isLastMove={lastMoveSquares.includes(sq)}
+                    onSquareClick={() => onSquareClick(sq)}
+                    onDrop={onDrop}
+                  />
+              );
+          }
+      }
+
+      return (
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+          <Header goHome={goBack} />
+          <div className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 px-4 pb-12">
+            
+            {/* Board */}
+            <div className="w-full max-w-[550px] aspect-square rounded-lg shadow-2xl overflow-hidden border-4 border-gray-800 bg-gray-800 grid grid-cols-8 grid-rows-8 relative">
+                {board}
+                
+                {/* FIX: Replaced isGameOver() with game_over() and isCheckmate() with in_checkmate() */}
+                {game.game_over() && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm">
+                        <div className="bg-white p-6 rounded-xl text-center shadow-2xl">
+                            <h2 className="text-2xl font-bold mb-2">游戏结束</h2>
+                            <p className="text-gray-600 mb-4">
+                                {game.in_checkmate() ? (game.turn() === 'w' ? "你输了" : "你赢了！") : "和棋"}
+                            </p>
+                            <button onClick={resetGame} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold">再来一局</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Controls */}
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 flex flex-col gap-6">
+                <div className="flex justify-between items-center">
+                    <span className="flex items-center gap-2 font-bold text-gray-700">
+                        <i className="ph ph-robot text-xl"></i> Stockfish 10
+                    </span>
+                    <span className={`text-xs font-bold px-2 py-1 rounded uppercase tracking-wider ${engineReady ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                        {engineReady ? "Online" : "Loading..."}
+                    </span>
+                </div>
+
+                {engineError && (
+                    <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+                        Error: {engineError}. 请检查网络连接。
+                    </div>
+                )}
+
+                <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold text-gray-500">选择难度 (Rating)</label>
+                    <div className="flex flex-wrap gap-2">
+                        {Object.keys(ENGINE_LEVELS).map(lvl => (
+                            <button 
+                                key={lvl}
+                                onClick={() => { setLevel(lvl); resetGame(); }}
+                                className={`px-3 py-1 text-sm rounded-full border transition-colors ${level === lvl ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300'}`}
+                            >
+                                {lvl}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex-1 min-h-[120px] flex items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 relative overflow-hidden">
+                    {isThinking ? (
+                        <div className="flex flex-col items-center gap-2 text-blue-600">
+                             <i className="ph ph-spinner animate-spin text-3xl"></i>
+                             <span className="font-bold text-sm">思考中...</span>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center gap-1 text-gray-400">
+                            {game.turn() === 'w' ? <span>轮到你走棋 (执白)</span> : <span>等待电脑...</span>}
+                            {evalScore && (
+                                <span className="text-xs font-mono mt-2 bg-gray-200 px-2 py-1 rounded">
+                                    Eval: {evalScore.type === 'mate' ? `M${evalScore.value}` : (evalScore.value / 100).toFixed(2)}
+                                </span>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <button onClick={handleUndo} disabled={isThinking || history.length < 2} className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors disabled:opacity-50">
+                        悔棋
+                    </button>
+                    <button onClick={resetGame} className="py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-200 transition-colors">
+                        新游戏
+                    </button>
+                </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const App = () => {
+      const [currentPage, setCurrentPage] = useState('hub');
+      const [chessLib, setChessLib] = useState(() => window.Chess || null);
+
+      useEffect(() => {
+          if (!chessLib && window.Chess) {
+              setChessLib(() => window.Chess);
+          }
+      }, []);
+
+      const styles = `
+        .font-quirky { font-family: 'Fredoka', sans-serif; }
+        .game-card { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .game-card:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+        .square.white { background-color: #eeeed2; }
+        .square.black { background-color: #769656; }
+        .square.highlight { background-color: rgba(255, 255, 0, 0.5) !important; }
+        .square.selected { background-color: rgba(186, 202, 68, 0.9) !important; }
+        .square.last-move { background-color: rgba(245, 246, 130, 0.6) !important; }
+        .chess-piece { cursor: grab; transition: transform 0.1s; }
+        .chess-piece:active { cursor: grabbing; transform: scale(1.1); z-index: 50; }
+      `;
+
+      if (!chessLib) return <div className="flex h-screen items-center justify-center text-gray-500">Loading Chess Libraries...</div>;
+
+      return (
+        <div className="font-sans text-gray-900 bg-[#fdfdfd] min-h-screen">
+          <style>{styles}</style>
+          {currentPage === 'hub' && <Hub onSelectGame={setCurrentPage} />}
+          {currentPage === 'puzzles' && <PuzzleGame goBack={() => setCurrentPage('hub')} chessLib={chessLib} />}
+          {currentPage === 'computer' && <ComputerGame goBack={() => setCurrentPage('hub')} chessLib={chessLib} />}
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
