@@ -251,7 +251,7 @@
           { move: "g1f2", reply: "e1f1" }
         ],
         title: "Lichess 开源谜题 000Zo",
-        description: "主题：endgame mate mateIn2 short; 预期走子数：2 手。",
+        description: "endgame mate mateIn2 short",
         difficulty: "简单"
       },
       {
@@ -262,12 +262,13 @@
           { move: "b2c3", reply: "c6e7" }
         ],
         title: "Lichess 开源谜题 000aY",
-        description: "主题：advantage master middlegame short; 预期走子数：2 手。",
+        description: "advantage master middlegame short",
         difficulty: "中等"
       },
       {
         id: "000h0",
         fen: "5rk1/p5p1/3bpr1p/1Pp4q/3pR3/1P1Q1N2/P4PPP/4R1K1 w - - 4 22",
+        playerColor: 'b',
         solution: [
           { move: "e4e6", reply: "f6f3" },
           { move: "g2f3", reply: "h5h2" },
@@ -275,7 +276,7 @@
           { move: "f1e2", reply: "h3e6" }
         ],
         title: "Lichess 开源谜题 000h0",
-        description: "主题：advantage interference kingsideAttack middlegame veryLong; 预期走子数：4 手。",
+        description: "advantage interference kingsideAttack middlegame veryLong",
         difficulty: "困难"
       },
       {
@@ -286,7 +287,7 @@
           { move: "f7f8", reply: "e6f7" }
         ],
         title: "Lichess 开源谜题 000hf",
-        description: "主题：mate mateIn2 middlegame short; 预期走子数：2 手。",
+        description: "mate mateIn2 middlegame short",
         difficulty: "中等"
       },
       {
@@ -297,8 +298,115 @@
           { move: "b7b6", reply: "a7b6" }
         ],
         title: "Lichess 开源谜题 000lC",
-        description: "主题：advantage hangingPiece middlegame short; 预期走子数：2 手。",
+        description: "advantage hangingPiece middlegame short",
         difficulty: "中等"
+      },
+      {
+        id: "zzyeq",
+        fen: "1r3k1r/ppp2p1p/5R2/4p3/P5Q1/3P1PPK/4q3/7R b - - 1 29",
+        solution: [
+          { move: "e2d3", reply: "g4e6" },
+          { move: "d3g6", reply: "e6e5" },
+          { move: "b8e8", reply: "e5c5" },
+          { move: "e8e7", reply: "f6g6" },
+          { move: "h7g6", reply: "h3g2" },
+          { move: "h8h1", reply: "g2h1" }
+        ],
+        title: "Lichess 开源谜题 zzyeq",
+        description: "advantage endgame pin veryLong",
+        difficulty: "困难",
+        playerColor: 'b'
+      },
+      {
+        id: "zzyfI",
+        fen: "Qnk4r/1pp2p2/2q4p/3pr1p1/R7/1PP2P1P/1P1N2P1/R5K1 b - - 1 22",
+        solution: [
+          { move: "h8e8", reply: "a8b8" },
+          { move: "c8d7", reply: "b8a7" }
+        ],
+        title: "Lichess 开源谜题 zzyfI",
+        description: "advantage middlegame queensideAttack short",
+        difficulty: "中等",
+        playerColor: 'b'
+      },
+      {
+        id: "zzyfU",
+        fen: "6r1/pQ3kp1/3q3r/p1p1p3/5p2/1P3P2/4K1R1/6R1 b - - 1 40",
+        solution: [
+          { move: "d6e7", reply: "g2g7" },
+          { move: "g8g7", reply: "g1g7" },
+          { move: "f7g7", reply: "b7e7" }
+        ],
+        title: "Lichess 开源谜题 zzyfU",
+        description: "advantage attraction endgame long",
+        difficulty: "简单",
+        playerColor: 'b'
+      },
+      {
+        id: "zzyhn",
+        fen: "2r3k1/5p2/3B2p1/p3Pb2/6P1/2p1Q3/P2R1P1K/1q6 b - - 0 37",
+        solution: [
+          { move: "b1h1", reply: "h2h1" },
+          { move: "c3d2", reply: "e3d2" }
+        ],
+        title: "Lichess 开源谜题 zzyhn",
+        description: "crushing endgame short",
+        difficulty: "简单",
+        playerColor: 'b'
+      },
+      {
+        id: "zzyir",
+        fen: "r4rk1/p1qpn1pp/1p2p3/3p1p2/2PP2n1/NP2PB2/P4PPP/2RQ1RK1 w - - 0 15",
+        solution: [
+          { move: "c4d5", reply: "c7h2" }
+        ],
+        title: "Lichess 开源谜题 zzyir",
+        description: "kingsideAttack mate mateIn1 middlegame oneMove",
+        difficulty: "简单",
+        playerColor: 'w'
+      },
+      {
+        id: "zzymq",
+        fen: "3R4/3P4/3r1p2/5K2/8/5P2/7p/7k b - - 0 83",
+        solution: [
+          { move: "d6d7", reply: "d8d7" },
+          { move: "h1g2", reply: "d7h7" },
+          { move: "g2f3", reply: "h7h2" }
+        ],
+        title: "Lichess 开源谜题 zzymq",
+        description: "crushing endgame hangingPiece long rookEndgame",
+        difficulty: "困难",
+        playerColor: 'b'
+      },
+      {
+        id: "zzynX",
+        fen: "8/R7/3p1p1P/1r1P2p1/4P1P1/5P2/pk2K3/8 w - - 2 62",
+        solution: [
+          { move: "h6h7", reply: "b5b8" },
+          { move: "e4e5", reply: "f6e5" },
+          { move: "f3f4", reply: "b8h8" },
+          { move: "f4g5", reply: "h8h7" },
+          { move: "a7h7", reply: "a2a1q" }
+        ],
+        title: "Lichess 开源谜题 zzynX",
+        description: "advancedPawn advantage deflection endgame promotion quietMove rookEndgame veryLong",
+        difficulty: "困难",
+        playerColor: 'w'
+      },
+      {
+        id: "zzynZ",
+        fen: "8/8/5kp1/5p2/5K1P/8/6P1/8 b - - 0 44",
+        solution: [
+          { move: "f6e6", reply: "f4g5" },
+          { move: "e6f7", reply: "h4h5" },
+          { move: "g6h5", reply: "g5f5" },
+          { move: "h5h4", reply: "f5g4" },
+          { move: "f7g6", reply: "g4h4" }
+        ],
+        title: "Lichess 开源谜题 zzynZ",
+        description: "crushing deflection endgame pawnEndgame veryLong",
+        difficulty: "困难",
+        playerColor: 'b'
       }
     ];
 
@@ -423,56 +531,74 @@
       const [possibleMoves, setPossibleMoves] = useState([]);
       const [status, setStatus] = useState("playing"); // playing, correct, wrong
       const [lastMoveSquares, setLastMoveSquares] = useState([]);
-      const [step, setStep] = useState(0);
+      const [moveIdx, setMoveIdx] = useState(0); // linear moves index
       const [puzzleError, setPuzzleError] = useState(null);
       const [hintSquares, setHintSquares] = useState([]);
       const [hintText, setHintText] = useState(null);
 
       const currentPuzzle = PUZZLES[idx];
+      const playerColor = currentPuzzle.playerColor || 'w';
+      const linearMoves = React.useMemo(() => {
+        const arr = [];
+        currentPuzzle.solution.forEach(s => {
+          if (s.move) arr.push(s.move);
+          if (s.reply) arr.push(s.reply);
+        });
+        return arr;
+      }, [currentPuzzle]);
 
       useEffect(() => {
         if (chessLib) {
-          const g = new chessLib(currentPuzzle.fen);
-          setGame(g);
-          setStatus("playing");
-          setLastMoveSquares([]);
-          setStep(0);
-          setPossibleMoves([]);
-          setSelectedSquare(null);
-          setHintSquares([]);
-          setHintText(null);
+          try {
+            const res = applyPrefixUntilPlayer(currentPuzzle.fen);
+            const g = new chessLib(res.fen);
+            setGame(g);
+            setStatus("playing");
+            setLastMoveSquares([]);
+            setMoveIdx(res.idx);
+            setPossibleMoves([]);
+            setSelectedSquare(null);
+            setHintSquares([]);
+            setHintText(null);
+          } catch (e) {
+            setPuzzleError(e.message || "关卡脚本非法");
+          }
         }
-      }, [idx, chessLib]);
+      }, [idx, chessLib, applyPrefixUntilPlayer, currentPuzzle.fen]);
 
       // Validate puzzle scriptability to avoid无解的关卡
       useEffect(() => {
         if (!chessLib) return;
         try {
           const g = new chessLib(currentPuzzle.fen);
-          currentPuzzle.solution.forEach((stepObj, i) => {
-            const move = stepObj.move;
-            const mv = g.move({ from: move.slice(0,2), to: move.slice(2,4), promotion: 'q' });
-            if (!mv) throw new Error(`第 ${i+1} 手玩家走子非法: ${move}`);
-            if (stepObj.reply) {
-              const reply = stepObj.reply;
-              const rv = g.move({ from: reply.slice(0,2), to: reply.slice(2,4), promotion: 'q' });
-              if (!rv) throw new Error(`第 ${i+1} 手应招非法: ${reply}`);
-            }
+          linearMoves.forEach((m, i) => {
+            const mv = g.move({ from: m.slice(0,2), to: m.slice(2,4), promotion: 'q' });
+            if (!mv) throw new Error(`第 ${i+1} 手非法: ${m}`);
           });
           setPuzzleError(null);
         } catch (err) {
           console.error(err);
           setPuzzleError(err.message || "关卡脚本非法");
         }
-      }, [currentPuzzle, chessLib]);
+      }, [currentPuzzle, chessLib, linearMoves]);
+
+      // Auto-apply一手使行棋权回到玩家
+      const applyPrefixUntilPlayer = useCallback((startFen) => {
+        const g = new chessLib(startFen);
+        let idxRunner = 0;
+        while (idxRunner < linearMoves.length && g.turn() !== playerColor) {
+          const moveStr = linearMoves[idxRunner];
+          const mv = g.move({ from: moveStr.slice(0,2), to: moveStr.slice(2,4), promotion: 'q' });
+          if (!mv) throw new Error("自动走子非法，关卡数据异常");
+          idxRunner += 1;
+        }
+        return { fen: g.fen(), idx: idxRunner };
+      }, [chessLib, linearMoves, playerColor]);
 
       const onDrop = (from, to) => {
         if (!game || status !== 'playing') return;
-        
-        // Validation
-        const steps = currentPuzzle.solution;
-        const currentStepObj = steps[step];
-        const neededMove = currentStepObj.move; // e.g., "g4g6"
+        const neededMove = linearMoves[moveIdx];
+        if (!neededMove) return;
 
         const gCopy = new chessLib(game.fen());
         try {
@@ -485,11 +611,10 @@
             setHintSquares([]);
             setHintText(null);
             setTimeout(() => {
-                // Reset board on wrong move
                 const resetG = new chessLib(currentPuzzle.fen);
                 setGame(resetG);
                 setStatus("playing");
-                setStep(0);
+                setMoveIdx(0);
                 setLastMoveSquares([]);
                 setHintSquares([]);
                 setHintText(null);
@@ -504,29 +629,30 @@
           setHintSquares([]);
           setHintText(null);
           
-          // Check if puzzle ended or computer reply
-          if (step + 1 >= steps.length && !currentStepObj.reply) {
-             setStatus("correct");
-          } else {
-             // Handle reply or next step
-             if (currentStepObj.reply) {
+          let nextIdx = moveIdx + 1;
+          if (nextIdx < linearMoves.length) {
+            const autoMove = linearMoves[nextIdx];
+            if (autoMove && gCopy.turn() !== playerColor) {
+              const autoBoard = new chessLib(gCopy.fen());
+              const mv = autoBoard.move({ from: autoMove.slice(0,2), to: autoMove.slice(2,4), promotion: 'q' });
+              if (mv) {
+                nextIdx += 1;
                 setTimeout(() => {
-                   const replyFrom = currentStepObj.reply.slice(0,2);
-                   const replyTo = currentStepObj.reply.slice(2,4);
-                   gCopy.move({ from: replyFrom, to: replyTo });
-                   setGame(new chessLib(gCopy.fen()));
-                   setLastMoveSquares([replyFrom, replyTo]);
-                   playMoveSound();
-                   
-                   if (step + 1 >= steps.length) {
-                       setStatus("correct");
-                   } else {
-                       setStep(s => s + 1);
-                   }
-                }, 400);
-             } else {
-                setStep(s => s + 1);
-             }
+                  setGame(autoBoard);
+                  setLastMoveSquares([autoMove.slice(0,2), autoMove.slice(2,4)]);
+                  playMoveSound();
+                  setMoveIdx(nextIdx);
+                  if (nextIdx >= linearMoves.length) setStatus("correct");
+                }, 500);
+                return;
+              } else {
+                setPuzzleError("自动走子非法，关卡数据异常");
+              }
+            }
+          }
+          setMoveIdx(nextIdx);
+          if (nextIdx >= linearMoves.length) {
+            setStatus("correct");
           }
         } catch(e) { console.error(e); }
       };
@@ -548,11 +674,10 @@
 
       const showHint = () => {
           if (status !== 'playing') return;
-          const steps = currentPuzzle.solution;
-          const currentStepObj = steps[step];
-          if (!currentStepObj) return;
-          const from = currentStepObj.move.slice(0,2);
-          const to = currentStepObj.move.slice(2,4);
+          const moveStr = linearMoves[moveIdx];
+          if (!moveStr) return;
+          const from = moveStr.slice(0,2);
+          const to = moveStr.slice(2,4);
           setHintSquares([from, to]);
           setHintText(`提示：${from} → ${to}`);
       };
@@ -669,14 +794,13 @@
                            const next = (idx + 1) % PUZZLES.length;
                            setIdx(next);
                          }}
-                         className="px-3 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200"
+                         className="px-4 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 whitespace-nowrap"
                        >
-                         随机/下一
+                         随机 / 下一题
                        </button>
                      </div>
                    </div>
                    <h2 className="text-2xl font-bold mb-2">{currentPuzzle.title}</h2>
-                   <p className="text-gray-600">{currentPuzzle.description}</p>
                    {puzzleError && (
                      <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                        关卡校验失败：{puzzleError}
